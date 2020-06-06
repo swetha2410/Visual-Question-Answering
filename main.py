@@ -166,7 +166,8 @@ def main():
 
         # Load model checkpoint file (if specified) from `log_dir`
         if args.model_ckpt:
-            model_ckpt_path = os.path.join(log_dir, args.model_ckpt)
+            #model_ckpt_path = os.path.join(log_dir, args.model_ckpt)
+            model_ckpt_path = args.model_ckpt
             checkpoint = torch.load(model_ckpt_path)
 
             model.load_state_dict(checkpoint)
@@ -285,7 +286,39 @@ def main():
 
     # TODO: Test/Inference
     elif args.mode == 'test':
-        raise NotImplementedError('TODO: test mode')
+        # Use the same word-index dicts as that obtained for the training set
+        test_dataset = VQADataset(args.val_file, args.val_img, word2idx, label2idx, max_seq_length,
+                                  transform=Compose([Resize(image_size), ToTensor(), Normalize((0.485, 0.456, 0.406),
+                                                                                               (0.229, 0.224, 0.225))]))
+
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size, shuffle=True,
+                                                  drop_last=True, num_workers=args.num_workers)
+
+        # Num of classes = K + 1 (for UNKNOWN)
+        num_classes = args.num_cls + 1
+
+        # Setup model params
+        question_encoder_params = model_config['question_params']
+        image_encoder_params = model_config['image_params']
+
+        # Define model & load to device
+        VQANet = model_config['model']
+
+        model = VQANet(question_encoder_params, image_encoder_params, K=num_classes)
+        model.to(device)
+
+        # Load weights from checkpoint file
+        log_dir = os.path.join(args.expt_dir, args.expt_name, args.run_name)
+        model_ckpt_path = os.path.join(log_dir, args.model_ckpt)
+
+        checkpoint = torch.load(model_ckpt_path, map_location=device)
+        model.load_state_dict(checkpoint)
+
+        print('Model successfully loaded from {}'.format(model_ckpt_path))
+
+        test_metrics = compute_validation_metrics(model, test_loader, device, test_dataset.__len__())
+
+        #raise NotImplementedError('TODO: test mode')
 
 
 def compute_validation_metrics(model, dataloader, device, size):
